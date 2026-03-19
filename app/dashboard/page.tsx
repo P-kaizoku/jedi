@@ -127,7 +127,7 @@ export default function Dashboard() {
   return (
     <div className="max-w-4xl mx-auto p-8">
       <div className="flex justify-between items-center mb-8">
-        <h1 className="text-2xl font-semibold">Job Tracker</h1>
+        <h1 className="text-2xl font-semibold">Jedi</h1>
         <Dialog open={open} onOpenChange={setOpen}>
           <div className="flex items-center gap-4">
             <DialogTrigger suppressHydrationWarning>+ Add Job</DialogTrigger>

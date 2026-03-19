@@ -1,36 +1,102 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Jedi — Job Application Tracker
+
+> Track every application. Land your dream job.
+
+A full-stack job application tracker built with Next.js, PostgreSQL, and Prisma. Keep your entire job search organized in one place — add applications, update statuses, and never lose track of where you applied.
+
+![Landing Page](./screenshots/landing.png)
+![Dashboard](./screenshots/dashboard.png)
+
+## Features
+
+- **Authentication** — Register, login, and logout with JWT-based auth
+- **Track applications** — Add jobs with title, company, and posting URL
+- **Update statuses** — Applied → Interviewing → Offered → Rejected
+- **Protected routes** — Every request is authenticated server-side
+- **Cloud database** — Your data persists across devices and sessions
+
+## Tech Stack
+
+| Layer      | Technology                                      |
+| ---------- | ----------------------------------------------- |
+| Frontend   | Next.js 16, TypeScript, Tailwind CSS, shadcn/ui |
+| Backend    | Next.js API Routes                              |
+| Database   | PostgreSQL (Prisma hosted)                      |
+| ORM        | Prisma 7                                        |
+| Auth       | JWT + bcrypt                                    |
+| Deployment | Vercel                                          |
 
 ## Getting Started
 
-First, run the development server:
+### Prerequisites
+
+- Node.js 18+
+- A Prisma hosted database (free at [prisma.io](https://prisma.io))
+
+### Installation
 
 ```bash
+# Clone the repo
+git clone https://github.com/P-kaizoku/jedi.git
+cd jedi
+
+# Install dependencies
+npm install
+
+# Set up environment variables
+cp .env.example .env
+# Add your DATABASE_URL and JWT_SECRET to .env
+
+# Run migrations
+npx prisma migrate dev --name init
+
+# Start the dev server
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Environment Variables
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```env
+DATABASE_URL=your_prisma_postgres_connection_string
+JWT_SECRET=your_random_secret_key
+```
 
-## Learn More
+## API Routes
 
-To learn more about Next.js, take a look at the following resources:
+```
+POST   /api/auth/register   Create a new account
+POST   /api/auth/login      Login and receive JWT token
+GET    /api/jobs            Get all jobs for authenticated user
+POST   /api/jobs            Create a new job application
+PATCH  /api/jobs/:id        Update job status
+DELETE /api/jobs/:id        Delete a job application
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Project Structure
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```
+jedi/
+├── app/
+│   ├── api/
+│   │   ├── auth/
+│   │   │   ├── login/route.ts
+│   │   │   └── register/route.ts
+│   │   └── jobs/
+│   │       ├── route.ts
+│   │       └── [id]/route.ts
+│   ├── dashboard/page.tsx
+│   ├── login/page.tsx
+│   ├── register/page.tsx
+│   └── page.tsx
+├── lib/
+│   ├── prisma.ts
+│   └── auth.ts
+└── prisma/
+    └── schema.prisma
+```
 
-## Deploy on Vercel
+## License
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+MIT

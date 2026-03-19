@@ -2,7 +2,7 @@ import Link from "next/link";
 
 export default function LandingPage() {
   return (
-    <div className="min-h-screen flex flex-col bg-neutral-200/80">
+    <div className="min-h-screen flex flex-col bg-neutral-900/80 text-neutral-200/80">
       {/* Navbar */}
       <nav className="flex justify-between items-center px-8 py-4 border-b">
         <h1 className="font-semibold text-2xl">Jedi</h1>

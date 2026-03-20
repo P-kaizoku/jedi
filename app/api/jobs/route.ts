@@ -10,7 +10,12 @@ export async function GET(req: Request) {
 
   const jobs = await prisma.job.findMany({
     where: { userId: user.userId },
-    orderBy: { createdAt: "desc" }
+    orderBy: { createdAt: "desc" },
+    include: {
+      notes: {
+        orderBy: { createdAt: "desc" }
+      }
+    }
   })
 
   return Response.json(jobs)

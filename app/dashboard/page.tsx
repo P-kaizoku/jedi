@@ -1,7 +1,8 @@
 // app/dashboard/page.tsx
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -41,10 +42,10 @@ type Job = {
 };
 
 const statusColors = {
-  APPLIED: "bg-blue-500/10 text-blue-600 dark:bg-blue-500/20 dark:text-blue-400",
-  INTERVIEWING: "bg-yellow-500/10 text-yellow-700 dark:bg-yellow-500/20 dark:text-yellow-400",
-  OFFERED: "bg-green-500/10 text-green-700 dark:bg-green-500/20 dark:text-green-400",
-  REJECTED: "bg-red-500/10 text-red-700 dark:bg-red-500/20 dark:text-red-400",
+  APPLIED: "bg-blue-500/5 text-blue-500 border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-400 dark:border-blue-400/20",
+  INTERVIEWING: "bg-amber-500/5 text-amber-600 border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-400/20",
+  OFFERED: "bg-emerald-500/5 text-emerald-600 border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-400/20",
+  REJECTED: "bg-rose-500/5 text-rose-600 border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-400 dark:border-rose-400/20",
 };
 
 const statusLabels = {
@@ -57,7 +58,6 @@ const statusLabels = {
 export default function Dashboard() {
   const router = useRouter();
   const [jobs, setJobs] = useState<Job[]>([]);
-  const [filteredJobs, setFilteredJobs] = useState<Job[]>([]);
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState("");
   const [company, setCompany] = useState("");
@@ -73,7 +73,7 @@ export default function Dashboard() {
     return localStorage.getItem("token");
   }
 
-  async function fetchJobs() {
+  const fetchJobs = useCallback(async () => {
     const token = getToken();
     if (!token) {
       router.push("/login");
@@ -91,7 +91,7 @@ export default function Dashboard() {
 
     const data = await res.json();
     setJobs(data);
-  }
+  }, [router]);
 
   async function addJob(e: React.FormEvent) {
     e.preventDefault();
@@ -140,7 +140,7 @@ export default function Dashboard() {
     if (!noteText.trim()) return;
     setAddingNote(true);
 
-    await fetch("/api/notes", {
+    const res = await fetch("/api/notes", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -149,48 +149,66 @@ export default function Dashboard() {
       body: JSON.stringify({ text: noteText, jobId }),
     });
 
-    setNoteText("");
+    if (res.ok) {
+      setNoteText("");
+      fetchJobs();
+      // Keep selectedJob notes list updated
+      const updatedJobsRes = await fetch("/api/jobs", {
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      if (updatedJobsRes.ok) {
+        const updatedJobs = await updatedJobsRes.json();
+        setJobs(updatedJobs);
+        const currentJob = updatedJobs.find((j: Job) => j.id === jobId);
+        if (currentJob) {
+          setSelectedJob(currentJob);
+        }
+      }
+    }
     setAddingNote(false);
-    fetchJobs();
   }
 
   async function deleteNote(noteId: string) {
-    await fetch(`/api/notes/${noteId}`, {
+    const res = await fetch(`/api/notes/${noteId}`, {
       method: "DELETE",
       headers: { Authorization: `Bearer ${getToken()}` },
     });
-    fetchJobs();
+    if (res.ok) {
+      fetchJobs();
+      if (selectedJob) {
+        // Keep selectedJob notes list updated
+        const updatedJobsRes = await fetch("/api/jobs", {
+          headers: { Authorization: `Bearer ${getToken()}` },
+        });
+        if (updatedJobsRes.ok) {
+          const updatedJobs = await updatedJobsRes.json();
+          setJobs(updatedJobs);
+          const currentJob = updatedJobs.find((j: Job) => j.id === selectedJob.id);
+          if (currentJob) {
+            setSelectedJob(currentJob);
+          }
+        }
+      }
+    }
   }
 
   // Filter and search jobs
-  useEffect(() => {
-    let filtered = jobs;
-
-    // Filter by status
-    if (statusFilter !== "ALL") {
-      filtered = filtered.filter((job) => job.status === statusFilter);
-    }
-
-    // Search by title or company
-    if (searchQuery) {
-      filtered = filtered.filter(
-        (job) =>
-          job.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          job.company.toLowerCase().includes(searchQuery.toLowerCase())
-      );
-    }
-
-    setFilteredJobs(filtered);
-  }, [jobs, searchQuery, statusFilter]);
+  const filteredJobs = jobs.filter((job) => {
+    const matchesStatus = statusFilter === "ALL" || job.status === statusFilter;
+    const matchesQuery = !searchQuery || 
+      job.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      job.company.toLowerCase().includes(searchQuery.toLowerCase());
+    return matchesStatus && matchesQuery;
+  });
 
   // Calculate statistics
-  const stats = {
-    total: jobs.length,
-    applied: jobs.filter((j) => j.status === "APPLIED").length,
-    interviewing: jobs.filter((j) => j.status === "INTERVIEWING").length,
-    offered: jobs.filter((j) => j.status === "OFFERED").length,
-    rejected: jobs.filter((j) => j.status === "REJECTED").length,
-  };
+  const stats = [
+    { label: "Total", value: jobs.length, color: "text-foreground", borderColor: "border-border" },
+    { label: "Applied", value: jobs.filter((j) => j.status === "APPLIED").length, color: "text-blue-500", borderColor: "border-border" },
+    { label: "Interviewing", value: jobs.filter((j) => j.status === "INTERVIEWING").length, color: "text-amber-500", borderColor: "border-border" },
+    { label: "Offered", value: jobs.filter((j) => j.status === "OFFERED").length, color: "text-emerald-500", borderColor: "border-border" },
+    { label: "Rejected", value: jobs.filter((j) => j.status === "REJECTED").length, color: "text-rose-500", borderColor: "border-border" },
+  ];
 
   function formatDate(dateString: string) {
     const date = new Date(dateString);
@@ -201,147 +219,134 @@ export default function Dashboard() {
     if (diffDays === 0) return "Today";
     if (diffDays === 1) return "Yesterday";
     if (diffDays < 7) return `${diffDays} days ago`;
-    if (diffDays < 30) return `${Math.floor(diffDays / 7)} weeks ago`;
-    if (diffDays < 365) return `${Math.floor(diffDays / 30)} months ago`;
+    if (diffDays < 30) return `${Math.floor(diffDays / 7)} wks ago`;
+    if (diffDays < 365) return `${Math.floor(diffDays / 30)} mos ago`;
     return date.toLocaleDateString();
   }
 
   useEffect(() => {
-    fetchJobs();
-  }, []);
+    const load = async () => {
+      await fetchJobs();
+    };
+    load();
+  }, [fetchJobs]);
 
-  // add this function inside Dashboard component
   function logout() {
     localStorage.removeItem("token");
     router.push("/login");
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-neutral-50 via-neutral-100 to-neutral-200 dark:from-neutral-950 dark:via-neutral-900 dark:to-neutral-800">
+    <div className="min-h-screen bg-background text-foreground antialiased selection:bg-foreground selection:text-background">
       <div className="max-w-7xl mx-auto p-4 md:p-8">
         {/* Header */}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8 pb-6 border-b border-border">
           <div>
-            <h1 className="text-3xl font-bold bg-gradient-to-r from-neutral-900 to-neutral-600 dark:from-neutral-100 dark:to-neutral-400 bg-clip-text text-transparent">
-              Jedi
-            </h1>
-            <p className="text-sm text-muted-foreground mt-1">
-              Track every application. Land your dream job.
+            <Link href="/" className="flex items-center gap-2 hover:opacity-85 transition-opacity">
+              <span className="font-mono text-[10px] bg-foreground/10 text-foreground px-2 py-0.5 border border-border rounded-sm uppercase tracking-wider font-semibold">
+                SYSTEM_LIVE
+              </span>
+              <h1 className="font-mono font-bold text-xl tracking-tight uppercase">
+                Jedi<span className="text-muted-foreground">/</span>Dashboard<span className="animate-pulse">_</span>
+              </h1>
+            </Link>
+            <p className="text-[11px] font-mono text-muted-foreground mt-1.5 uppercase tracking-wider">
+              [PIPELINE_MONITOR // STATUS: ONLINE]
             </p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 w-full md:w-auto font-mono">
             <Dialog open={open} onOpenChange={setOpen}>
-              <DialogTrigger>
-                <Button size="sm" suppressHydrationWarning>
-                  + Add Application
+              <DialogTrigger render={
+                <Button size="sm" className="font-mono text-xs rounded-sm border border-foreground bg-foreground text-background hover:bg-background hover:text-foreground transition-all cursor-pointer" suppressHydrationWarning>
+                  + ADD_APPLICATION
                 </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Add New Application</DialogTitle>
+              } />
+              <DialogContent className="border border-border bg-card rounded-sm shadow-none max-w-md font-sans">
+                <DialogHeader className="border-b border-border/80 pb-3">
+                  <DialogTitle className="font-mono text-sm font-bold uppercase tracking-wider flex items-center justify-between">
+                    <span>Initialize Entry</span>
+                    <span className="text-muted-foreground text-[10px] font-medium tracking-normal">[DB // ADD_RECORD]</span>
+                  </DialogTitle>
                 </DialogHeader>
-                <form onSubmit={addJob} className="space-y-4">
-                  <div className="space-y-2">
-                    <Label>Job Title</Label>
+                <form onSubmit={addJob} className="space-y-4 pt-4">
+                  <div className="space-y-1.5">
+                    <Label className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Job Title</Label>
                     <Input
                       value={title}
                       onChange={(e) => setTitle(e.target.value)}
-                      placeholder="Frontend Engineer"
+                      placeholder="e.g. Frontend Engineer"
                       required
+                      className="rounded-sm border-border bg-background/50 focus-visible:border-foreground/30 focus-visible:ring-3 focus-visible:ring-foreground/10 font-mono text-sm placeholder:text-muted-foreground/40"
                     />
                   </div>
-                  <div className="space-y-2">
-                    <Label>Company</Label>
+                  <div className="space-y-1.5">
+                    <Label className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Company</Label>
                     <Input
                       value={company}
                       onChange={(e) => setCompany(e.target.value)}
-                      placeholder="Razorpay"
+                      placeholder="e.g. Stripe"
                       required
+                      className="rounded-sm border-border bg-background/50 focus-visible:border-foreground/30 focus-visible:ring-3 focus-visible:ring-foreground/10 font-mono text-sm placeholder:text-muted-foreground/40"
                     />
                   </div>
-                  <div className="space-y-2">
-                    <Label>Job URL (optional)</Label>
+                  <div className="space-y-1.5">
+                    <Label className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Job URL (optional)</Label>
                     <Input
                       value={url}
                       onChange={(e) => setUrl(e.target.value)}
                       placeholder="https://..."
+                      className="rounded-sm border-border bg-background/50 focus-visible:border-foreground/30 focus-visible:ring-3 focus-visible:ring-foreground/10 font-mono text-sm placeholder:text-muted-foreground/40"
                     />
                   </div>
-                  <Button type="submit" className="w-full" disabled={loading}>
-                    {loading ? "Adding..." : "Add Application"}
+                  <Button type="submit" className="w-full font-mono text-sm rounded-sm py-2 hover:bg-background hover:text-foreground border border-foreground bg-foreground text-background transition-all duration-150 cursor-pointer" disabled={loading}>
+                    {loading ? "SAVING..." : "COMMIT_ENTRY"}
                   </Button>
                 </form>
               </DialogContent>
             </Dialog>
-            <Button variant="ghost" size="sm" onClick={logout}>
-              Logout
+            <Button variant="ghost" size="sm" className="text-xs rounded-sm border border-transparent hover:border-border hover:bg-foreground/[0.02] cursor-pointer" onClick={logout}>
+              [LOGOUT]
             </Button>
           </div>
         </div>
 
         {/* Statistics */}
         {jobs.length > 0 && (
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
-            <Card className="border-2">
-              <CardContent className="p-4">
-                <div className="text-2xl font-bold">{stats.total}</div>
-                <div className="text-xs text-muted-foreground">Total</div>
-              </CardContent>
-            </Card>
-            <Card className="border-2 border-blue-200 dark:border-blue-800">
-              <CardContent className="p-4">
-                <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-                  {stats.applied}
-                </div>
-                <div className="text-xs text-muted-foreground">Applied</div>
-              </CardContent>
-            </Card>
-            <Card className="border-2 border-yellow-200 dark:border-yellow-800">
-              <CardContent className="p-4">
-                <div className="text-2xl font-bold text-yellow-700 dark:text-yellow-400">
-                  {stats.interviewing}
-                </div>
-                <div className="text-xs text-muted-foreground">Interviewing</div>
-              </CardContent>
-            </Card>
-            <Card className="border-2 border-green-200 dark:border-green-800">
-              <CardContent className="p-4">
-                <div className="text-2xl font-bold text-green-700 dark:text-green-400">
-                  {stats.offered}
-                </div>
-                <div className="text-xs text-muted-foreground">Offered</div>
-              </CardContent>
-            </Card>
-            <Card className="border-2 border-red-200 dark:border-red-800">
-              <CardContent className="p-4">
-                <div className="text-2xl font-bold text-red-700 dark:text-red-400">
-                  {stats.rejected}
-                </div>
-                <div className="text-xs text-muted-foreground">Rejected</div>
-              </CardContent>
-            </Card>
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
+            {stats.map((stat) => (
+              <Card key={stat.label} className="border border-border bg-card/20 rounded-sm shadow-none">
+                <CardContent className="p-4 flex flex-col justify-between h-full">
+                  <span className="text-[10px] font-mono font-semibold uppercase tracking-wider text-muted-foreground">
+                    [{stat.label}]
+                  </span>
+                  <div className={`text-2xl md:text-3xl font-mono font-bold mt-2 tracking-tight ${stat.color}`}>
+                    {String(stat.value).padStart(2, "0")}
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
           </div>
         )}
 
         {/* Search and Filter */}
         {jobs.length > 0 && (
-          <div className="flex flex-col md:flex-row gap-3 mb-6">
+          <div className="flex flex-col sm:flex-row gap-4 mb-6">
             <Input
-              placeholder="Search by title or company..."
+              placeholder="SEARCH_BY_TITLE_OR_COMPANY..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="md:flex-1"
+              className="sm:flex-1 rounded-sm border-border bg-background/50 focus-visible:border-foreground/30 focus-visible:ring-3 focus-visible:ring-foreground/10 font-mono text-sm placeholder:text-muted-foreground/40"
             />
             <Select value={statusFilter} onValueChange={(val) => setStatusFilter(val || "ALL")}>
-              <SelectTrigger className="md:w-48">
-                <SelectValue placeholder="Filter by status" />
+              <SelectTrigger className="sm:w-48 font-mono text-xs rounded-sm border-border bg-background/50 hover:bg-foreground/[0.02]">
+                <SelectValue placeholder="FILTER_BY_STATUS" />
               </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">All Statuses</SelectItem>
-                <SelectItem value="APPLIED">Applied</SelectItem>
-                <SelectItem value="INTERVIEWING">Interviewing</SelectItem>
-                <SelectItem value="OFFERED">Offered</SelectItem>
-                <SelectItem value="REJECTED">Rejected</SelectItem>
+              <SelectContent className="font-mono text-xs rounded-sm">
+                <SelectItem value="ALL">ALL STATUSES</SelectItem>
+                <SelectItem value="APPLIED">APPLIED</SelectItem>
+                <SelectItem value="INTERVIEWING">INTERVIEWING</SelectItem>
+                <SelectItem value="OFFERED">OFFERED</SelectItem>
+                <SelectItem value="REJECTED">REJECTED</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -350,55 +355,57 @@ export default function Dashboard() {
         {/* Job Cards */}
         <div className="space-y-4">
           {filteredJobs.length === 0 && jobs.length === 0 && (
-            <Card className="border-dashed border-2">
-              <CardContent className="flex flex-col items-center justify-center py-16">
-                <div className="text-6xl mb-4">📝</div>
-                <h3 className="text-lg font-semibold mb-2">No applications yet</h3>
-                <p className="text-sm text-muted-foreground mb-4">
-                  Start tracking your job applications today!
+            <Card className="border-dashed border border-border bg-card/10 rounded-sm shadow-none">
+              <CardContent className="flex flex-col items-center justify-center py-16 text-center">
+                <div className="font-mono text-3xl mb-4 text-muted-foreground/60">[NO_RECORDS]</div>
+                <h3 className="text-base font-mono font-bold mb-2">DATABASE IS EMPTY</h3>
+                <p className="text-sm text-muted-foreground mb-6 max-w-sm">
+                  No active applications found. Initialize tracking by creating your first entry.
                 </p>
-                <Button onClick={() => setOpen(true)}>Add Your First Application</Button>
+                <Button onClick={() => setOpen(true)} className="font-mono rounded-sm text-xs border border-foreground bg-foreground text-background hover:bg-background hover:text-foreground cursor-pointer">
+                  CREATE_FIRST_RECORD
+                </Button>
               </CardContent>
             </Card>
           )}
           {filteredJobs.length === 0 && jobs.length > 0 && (
-            <Card className="border-dashed border-2">
-              <CardContent className="flex flex-col items-center justify-center py-12">
-                <div className="text-4xl mb-4">🔍</div>
-                <p className="text-muted-foreground">
-                  No applications match your search or filter
+            <Card className="border-dashed border border-border bg-card/10 rounded-sm shadow-none">
+              <CardContent className="flex flex-col items-center justify-center py-12 text-center">
+                <div className="font-mono text-2xl mb-2 text-muted-foreground/60">[NO_MATCHES]</div>
+                <p className="text-sm font-mono text-muted-foreground">
+                  Query returned 0 results. Refine search criteria.
                 </p>
               </CardContent>
             </Card>
           )}
           {filteredJobs.map((job) => (
-            <Card key={job.id} className="hover:shadow-lg transition-shadow">
+            <Card key={job.id} className="border border-border hover:border-foreground/30 hover:bg-foreground/[0.01] transition-all rounded-sm shadow-none">
               <CardHeader className="pb-3">
                 <div className="flex flex-col md:flex-row md:justify-between md:items-start gap-3">
                   <div className="flex-1">
-                    <div className="flex items-start gap-3 mb-2">
+                    <div className="flex items-start justify-between gap-3 mb-2.5">
                       <div className="flex-1">
-                        <CardTitle className="text-xl mb-1">{job.title}</CardTitle>
-                        <p className="text-sm text-muted-foreground font-medium">
+                        <CardTitle className="text-lg font-bold tracking-tight text-foreground">{job.title}</CardTitle>
+                        <p className="text-sm text-muted-foreground font-medium mt-0.5">
                           {job.company}
                         </p>
                       </div>
-                      <Badge className={statusColors[job.status]}>
+                      <Badge variant="outline" className={`${statusColors[job.status]} font-mono text-[10px] rounded-sm uppercase px-2 py-0.5 tracking-wider border`}>
                         {statusLabels[job.status]}
                       </Badge>
                     </div>
-                    <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                      <span>Added {formatDate(job.createdAt)}</span>
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] font-mono text-muted-foreground uppercase">
+                      <span>ADDED: {formatDate(job.createdAt)}</span>
                       {job.updatedAt !== job.createdAt && (
                         <>
                           <span>•</span>
-                          <span>Updated {formatDate(job.updatedAt)}</span>
+                          <span>UPDATED: {formatDate(job.updatedAt)}</span>
                         </>
                       )}
                       {job.notes.length > 0 && (
                         <>
                           <span>•</span>
-                          <span>{job.notes.length} note{job.notes.length > 1 ? 's' : ''}</span>
+                          <span className="text-foreground/70 font-bold">[{job.notes.length} NOTE{job.notes.length > 1 ? 'S' : ''}]</span>
                         </>
                       )}
                     </div>
@@ -406,111 +413,123 @@ export default function Dashboard() {
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="flex flex-wrap items-center gap-3">
+                <div className="flex flex-wrap items-center gap-3 w-full">
                   <Select
                     value={job.status}
                     onValueChange={(val) => updateStatus(job.id, val as string)}
                   >
-                    <SelectTrigger className="w-40">
+                    <SelectTrigger className="w-36 font-mono text-xs rounded-sm border-border bg-background/30 hover:bg-foreground/[0.02]">
                       <SelectValue />
                     </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="APPLIED">Applied</SelectItem>
-                      <SelectItem value="INTERVIEWING">Interviewing</SelectItem>
-                      <SelectItem value="OFFERED">Offered</SelectItem>
-                      <SelectItem value="REJECTED">Rejected</SelectItem>
+                    <SelectContent className="font-mono text-xs rounded-sm">
+                      <SelectItem value="APPLIED">APPLIED</SelectItem>
+                      <SelectItem value="INTERVIEWING">INTERVIEWING</SelectItem>
+                      <SelectItem value="OFFERED">OFFERED</SelectItem>
+                      <SelectItem value="REJECTED">REJECTED</SelectItem>
                     </SelectContent>
                   </Select>
+                  
                   {job.url && (
                     <a
                       href={job.url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
+                      className="text-xs font-mono text-blue-500 hover:text-blue-600 hover:underline flex items-center gap-1 decoration-blue-500/30"
                     >
-                      View posting ↗
+                      VIEW_POSTING ↗
                     </a>
                   )}
-                  <div className="ml-auto flex gap-2">
+                  
+                  <div className="ml-auto flex items-center gap-2">
                     <Dialog>
-                      <DialogTrigger>
+                      <DialogTrigger render={
                         <Button
                           variant="outline"
                           size="sm"
+                          className="font-mono text-xs rounded-sm border-border hover:bg-foreground/[0.02] cursor-pointer"
                           onClick={() => setSelectedJob(job)}
                         >
-                          Notes ({job.notes.length})
+                          LOGS ({job.notes.length})
                         </Button>
-                      </DialogTrigger>
-                      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
-                        <DialogHeader>
-                          <DialogTitle>Notes for {job.title}</DialogTitle>
+                      } />
+                      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto border border-border bg-card rounded-sm shadow-none font-sans">
+                        <DialogHeader className="border-b border-border/80 pb-3">
+                          <DialogTitle className="font-mono text-sm font-bold uppercase tracking-wider flex items-center justify-between">
+                            <span>Application Notes</span>
+                            <span className="text-muted-foreground text-[10px] font-medium tracking-normal">[DB // READ_NOTES]</span>
+                          </DialogTitle>
                         </DialogHeader>
-                        <div className="space-y-4">
+                        <div className="space-y-5 pt-4">
                           {/* Add Note Form */}
                           <div className="space-y-2">
-                            <Label>Add a note</Label>
+                            <Label className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Add a new log entry</Label>
                             <Textarea
                               value={noteText}
                               onChange={(e) => setNoteText(e.target.value)}
-                              placeholder="Record interview details, follow-up reminders, or any other notes..."
+                              placeholder="Record interview status, recruiter communications, or code test feedback..."
                               rows={3}
+                              className="rounded-sm border border-input bg-background/50 focus-visible:border-foreground/30 focus-visible:ring-3 focus-visible:ring-foreground/10 p-2 text-sm placeholder:text-muted-foreground/40"
                             />
                             <Button
                               onClick={() => addNote(job.id)}
                               disabled={addingNote || !noteText.trim()}
                               size="sm"
+                              className="font-mono text-xs rounded-sm border border-foreground bg-foreground text-background hover:bg-background hover:text-foreground transition-all cursor-pointer"
                             >
-                              {addingNote ? "Adding..." : "Add Note"}
+                              {addingNote ? "APPENDING..." : "APPEND_LOG_ENTRY"}
                             </Button>
                           </div>
 
                           {/* Notes List */}
-                          {job.notes.length === 0 ? (
-                            <div className="text-center py-8 text-muted-foreground">
-                              No notes yet. Add one above!
-                            </div>
-                          ) : (
-                            <div className="space-y-3">
-                              <h4 className="font-semibold text-sm">All Notes</h4>
-                              {job.notes.map((note) => (
-                                <Card key={note.id} size="sm">
-                                  <CardContent className="p-3">
-                                    <div className="flex justify-between items-start gap-3">
-                                      <div className="flex-1">
-                                        <p className="text-sm whitespace-pre-wrap">{note.text}</p>
-                                        <p className="text-xs text-muted-foreground mt-2">
-                                          {formatDate(note.createdAt)}
-                                        </p>
+                          <div className="space-y-3 pt-2">
+                            <h4 className="font-mono text-xs uppercase tracking-wider text-muted-foreground font-bold">
+                              Log Stream ({selectedJob?.id === job.id ? selectedJob.notes.length : job.notes.length})
+                            </h4>
+                            {(selectedJob?.id === job.id ? selectedJob.notes : job.notes).length === 0 ? (
+                              <div className="text-center py-8 font-mono text-xs text-muted-foreground border border-dashed border-border rounded-sm bg-background/10">
+                                [STREAM_EMPTY: NO NOTES REGISTERED]
+                              </div>
+                            ) : (
+                              <div className="space-y-3 max-h-[40vh] overflow-y-auto pr-1">
+                                {(selectedJob?.id === job.id ? selectedJob.notes : job.notes).map((note) => (
+                                  <Card key={note.id} size="sm" className="border border-border bg-background/30 rounded-sm shadow-none">
+                                    <CardContent className="p-3">
+                                      <div className="flex justify-between items-start gap-3">
+                                        <div className="flex-1">
+                                          <p className="text-sm whitespace-pre-wrap text-foreground/90 font-sans leading-relaxed">{note.text}</p>
+                                          <p className="text-[10px] font-mono text-muted-foreground mt-2 uppercase">
+                                            TIMESTAMP: {formatDate(note.createdAt)}
+                                          </p>
+                                        </div>
+                                        <Button
+                                          variant="ghost"
+                                          size="xs"
+                                          className="font-mono text-[10px] text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 cursor-pointer rounded-sm"
+                                          onClick={() => deleteNote(note.id)}
+                                        >
+                                          [DELETE]
+                                        </Button>
                                       </div>
-                                      <Button
-                                        variant="ghost"
-                                        size="xs"
-                                        className="text-red-500 hover:text-red-700"
-                                        onClick={() => deleteNote(note.id)}
-                                      >
-                                        Delete
-                                      </Button>
-                                    </div>
-                                  </CardContent>
-                                </Card>
-                              ))}
-                            </div>
-                          )}
+                                    </CardContent>
+                                  </Card>
+                                ))}
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </DialogContent>
                     </Dialog>
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="text-red-500 hover:text-red-700"
+                      className="font-mono text-xs rounded-sm text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 cursor-pointer"
                       onClick={() => {
                         if (confirm("Delete this application?")) {
                           deleteJob(job.id);
                         }
                       }}
                     >
-                      Delete
+                      [DELETE]
                     </Button>
                   </div>
                 </div>

@@ -1,6 +1,38 @@
+"use client";
 import Link from "next/link";
+import { useState, useEffect } from "react";
 
 export default function LandingPage() {
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [userEmail, setUserEmail] = useState("");
+
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (token) {
+      setTimeout(() => {
+        setIsLoggedIn(true);
+        try {
+          const payloadPart = token.split(".")[1];
+          if (payloadPart) {
+            const base64 = payloadPart.replace(/-/g, "+").replace(/_/g, "/");
+            const jsonPayload = decodeURIComponent(
+              window.atob(base64)
+                .split("")
+                .map((c) => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2))
+                .join("")
+            );
+            const decoded = JSON.parse(jsonPayload);
+            if (decoded && decoded.email) {
+              setUserEmail(decoded.email);
+            }
+          }
+        } catch (e) {
+          console.error("Failed to parse token payload:", e);
+        }
+      }, 0);
+    }
+  }, []);
+
   return (
     <div className="min-h-screen flex flex-col bg-background text-foreground antialiased selection:bg-foreground selection:text-background">
       {/* Navbar */}
@@ -14,18 +46,34 @@ export default function LandingPage() {
           </span>
         </div>
         <div className="flex gap-4 items-center justify-center font-mono">
-          <Link
-            href="/login"
-            className="text-sm text-muted-foreground hover:text-foreground transition-colors py-1.5 px-3 rounded-sm border border-transparent hover:border-border"
-          >
-            Login
-          </Link>
-          <Link
-            href="/register"
-            className="text-sm bg-foreground text-background border border-foreground px-4 py-1.5 rounded-sm hover:bg-background hover:text-foreground transition-all font-medium"
-          >
-            Get Started
-          </Link>
+          {isLoggedIn ? (
+            <>
+              <span className="text-xs text-muted-foreground bg-foreground/5 border border-border rounded-sm py-1.5 px-3 select-none">
+                [USER // {userEmail || "LOGGED_IN"}]
+              </span>
+              <Link
+                href="/dashboard"
+                className="text-sm bg-foreground text-background border border-foreground px-4 py-1.5 rounded-sm hover:bg-background hover:text-foreground transition-all font-medium"
+              >
+                Dashboard
+              </Link>
+            </>
+          ) : (
+            <>
+              <Link
+                href="/login"
+                className="text-sm text-muted-foreground hover:text-foreground transition-colors py-1.5 px-3 rounded-sm border border-transparent hover:border-border"
+              >
+                Login
+              </Link>
+              <Link
+                href="/register"
+                className="text-sm bg-foreground text-background border border-foreground px-4 py-1.5 rounded-sm hover:bg-background hover:text-foreground transition-all font-medium"
+              >
+                Get Started
+              </Link>
+            </>
+          )}
         </div>
       </nav>
 
@@ -49,13 +97,13 @@ export default function LandingPage() {
 
         <div className="flex flex-col sm:flex-row gap-4 w-full sm:w-auto font-mono">
           <Link
-            href="/register"
+            href={isLoggedIn ? "/dashboard" : "/register"}
             className="bg-foreground text-background border border-foreground px-8 py-3 rounded-sm hover:bg-background hover:text-foreground transition-all font-semibold text-sm shadow-none"
           >
-            INITIALIZE_TRACKING — it&apos;s free
+            {isLoggedIn ? "LAUNCH_WORKSPACE" : "INITIALIZE_TRACKING — it's free"}
           </Link>
           <Link
-            href="/login"
+            href={isLoggedIn ? "/dashboard" : "/login"}
             className="border border-border bg-transparent text-foreground px-8 py-3 rounded-sm hover:bg-foreground/[0.03] hover:border-foreground/30 transition-all font-semibold text-sm"
           >
             ACCESS_DASHBOARD

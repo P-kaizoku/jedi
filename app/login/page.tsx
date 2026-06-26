@@ -1,12 +1,36 @@
 // app/login/page.tsx
 "use client";
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useState, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+
+function ErrorDisplay() {
+  const searchParams = useSearchParams();
+  const oauthError = searchParams.get("error");
+
+  if (!oauthError) return null;
+
+  const errorMessages: Record<string, string> = {
+    no_code: "GitHub did not return an auth verification code.",
+    token_exchange_failed: "Failed to exchange OAuth code for access token.",
+    no_access_token: "Access token request rejected by provider.",
+    email_fetch_failed: "Failed to retrieve user email from provider account.",
+    no_email_provided: "No verified primary email found on your GitHub profile.",
+    oauth_internal_error: "An unexpected error occurred during OAuth validation.",
+  };
+
+  const msg = errorMessages[oauthError] || oauthError;
+
+  return (
+    <div className="text-xs font-mono text-red-500 dark:text-red-400 bg-red-500/10 border border-red-500/20 p-3 rounded-sm leading-relaxed">
+      <span className="font-bold">[ERROR // OAUTH_FAILED]:</span> {msg}
+    </div>
+  );
+}
 
 export default function LoginPage() {
   const router = useRouter();
@@ -36,6 +60,15 @@ export default function LoginPage() {
 
     localStorage.setItem("token", data.token);
     router.push("/dashboard");
+  }
+
+  function handleGithubSignIn(e: React.MouseEvent<HTMLAnchorElement>) {
+    e.preventDefault();
+    const clientId = process.env.NEXT_PUBLIC_GITHUB_CLIENT_ID || process.env.GITHUB_CLIENT_ID || "";
+    const origin = window.location.origin;
+    const redirectUri = encodeURIComponent(`${origin}/api/auth/callback/github`);
+    const url = `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&scope=user:email`;
+    window.location.href = url;
   }
 
   return (
@@ -87,7 +120,11 @@ export default function LoginPage() {
                 className="rounded-sm border-border bg-background/50 focus-visible:border-foreground/30 focus-visible:ring-3 focus-visible:ring-foreground/10 placeholder:text-muted-foreground/50 font-mono text-sm"
               />
             </div>
-            
+
+            <Suspense fallback={null}>
+              <ErrorDisplay />
+            </Suspense>
+
             {error && (
               <div className="text-xs font-mono text-red-500 dark:text-red-400 bg-red-500/10 border border-red-500/20 p-3 rounded-sm leading-relaxed">
                 <span className="font-bold">[ERROR // ACCESS_DENIED]:</span> {error}
@@ -101,7 +138,24 @@ export default function LoginPage() {
             >
               {loading ? "AUTHENTICATING..." : "ESTABLISH_SESSION"}
             </Button>
-            
+
+            <div className="relative flex py-1 items-center">
+              <div className="flex-grow border-t border-border/50"></div>
+              <span className="flex-shrink mx-4 font-mono text-[9px] text-muted-foreground uppercase tracking-widest">or</span>
+              <div className="flex-grow border-t border-border/50"></div>
+            </div>
+
+            <a
+              href="#"
+              onClick={handleGithubSignIn}
+              className="w-full inline-flex justify-center items-center gap-2 font-mono text-xs border border-border rounded-sm py-2 bg-background hover:bg-foreground/[0.02] hover:border-foreground/30 transition-all duration-150 cursor-pointer"
+            >
+              <svg className="size-4" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 0C5.37 0 0 5.37 0 12c0 5.3 3.438 9.8 8.205 11.385.6.11.82-.26.82-.577v-2.234c-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22v3.293c0 .319.22.694.825.576C20.565 21.795 24 17.3 24 12c0-6.63-5.37-12-12-12z" />
+              </svg>
+              SIGN_IN_WITH_GITHUB
+            </a>
+
             <p className="text-xs text-center text-muted-foreground font-mono">
               Need account?{" "}
               <Link href="/register" className="text-foreground hover:underline font-semibold decoration-border hover:decoration-foreground underline underline-offset-4">

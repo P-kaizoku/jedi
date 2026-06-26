@@ -11,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogHeader,
   DialogTitle,
@@ -55,9 +56,45 @@ const statusLabels = {
   REJECTED: "Rejected",
 };
 
+function JobSkeleton() {
+  return (
+    <Card className="border border-border rounded-sm shadow-none animate-pulse bg-card/20">
+      <CardHeader className="pb-3">
+        <div className="flex flex-col md:flex-row md:justify-between md:items-start gap-3">
+          <div className="flex-1 space-y-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex-1 space-y-2">
+                <div className="h-5 bg-foreground/10 rounded-sm w-1/3" />
+                <div className="h-4 bg-foreground/10 rounded-sm w-1/4" />
+              </div>
+              <div className="h-5 bg-foreground/10 rounded-sm w-16" />
+            </div>
+            <div className="flex gap-3">
+              <div className="h-3 bg-foreground/10 rounded-sm w-24" />
+              <div className="h-3 bg-foreground/10 rounded-sm w-28" />
+            </div>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="pb-4">
+        <div className="flex items-center gap-3">
+          <div className="h-8 bg-foreground/10 rounded-sm w-36" />
+          <div className="h-4 bg-foreground/10 rounded-sm w-20" />
+          <div className="ml-auto flex gap-2">
+            <div className="h-8 bg-foreground/10 rounded-sm w-20" />
+            <div className="h-8 bg-foreground/10 rounded-sm w-16" />
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function Dashboard() {
   const router = useRouter();
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [fetching, setFetching] = useState(true);
+  const [currentPage, setCurrentPage] = useState(1);
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState("");
   const [company, setCompany] = useState("");
@@ -80,17 +117,23 @@ export default function Dashboard() {
       return;
     }
 
-    const res = await fetch("/api/jobs", {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    try {
+      const res = await fetch("/api/jobs", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
 
-    if (res.status === 401) {
-      router.push("/login");
-      return;
+      if (res.status === 401) {
+        router.push("/login");
+        return;
+      }
+
+      const data = await res.json();
+      setJobs(data);
+    } catch (err) {
+      console.error("Failed to fetch jobs:", err);
+    } finally {
+      setFetching(false);
     }
-
-    const data = await res.json();
-    setJobs(data);
   }, [router]);
 
   async function addJob(e: React.FormEvent) {
@@ -201,6 +244,14 @@ export default function Dashboard() {
     return matchesStatus && matchesQuery;
   });
 
+  const itemsPerPage = 5;
+  const totalPages = Math.ceil(filteredJobs.length / itemsPerPage) || 1;
+  const activePage = Math.min(currentPage, totalPages);
+  const paginatedJobs = filteredJobs.slice(
+    (activePage - 1) * itemsPerPage,
+    activePage * itemsPerPage
+  );
+
   // Calculate statistics
   const stats = [
     { label: "Total", value: jobs.length, color: "text-foreground", borderColor: "border-border" },
@@ -225,11 +276,12 @@ export default function Dashboard() {
   }
 
   useEffect(() => {
-    const load = async () => {
-      await fetchJobs();
-    };
-    load();
+    fetchJobs();
   }, [fetchJobs]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, statusFilter]);
 
   function logout() {
     localStorage.removeItem("token");
@@ -353,190 +405,267 @@ export default function Dashboard() {
         )}
 
         {/* Job Cards */}
-        <div className="space-y-4">
-          {filteredJobs.length === 0 && jobs.length === 0 && (
-            <Card className="border-dashed border border-border bg-card/10 rounded-sm shadow-none">
-              <CardContent className="flex flex-col items-center justify-center py-16 text-center">
-                <div className="font-mono text-3xl mb-4 text-muted-foreground/60">[NO_RECORDS]</div>
-                <h3 className="text-base font-mono font-bold mb-2">DATABASE IS EMPTY</h3>
-                <p className="text-sm text-muted-foreground mb-6 max-w-sm">
-                  No active applications found. Initialize tracking by creating your first entry.
-                </p>
-                <Button onClick={() => setOpen(true)} className="font-mono rounded-sm text-xs border border-foreground bg-foreground text-background hover:bg-background hover:text-foreground cursor-pointer">
-                  CREATE_FIRST_RECORD
-                </Button>
-              </CardContent>
-            </Card>
-          )}
-          {filteredJobs.length === 0 && jobs.length > 0 && (
-            <Card className="border-dashed border border-border bg-card/10 rounded-sm shadow-none">
-              <CardContent className="flex flex-col items-center justify-center py-12 text-center">
-                <div className="font-mono text-2xl mb-2 text-muted-foreground/60">[NO_MATCHES]</div>
-                <p className="text-sm font-mono text-muted-foreground">
-                  Query returned 0 results. Refine search criteria.
-                </p>
-              </CardContent>
-            </Card>
-          )}
-          {filteredJobs.map((job) => (
-            <Card key={job.id} className="border border-border hover:border-foreground/30 hover:bg-foreground/[0.01] transition-all rounded-sm shadow-none">
-              <CardHeader className="pb-3">
-                <div className="flex flex-col md:flex-row md:justify-between md:items-start gap-3">
-                  <div className="flex-1">
-                    <div className="flex items-start justify-between gap-3 mb-2.5">
-                      <div className="flex-1">
-                        <CardTitle className="text-lg font-bold tracking-tight text-foreground">{job.title}</CardTitle>
-                        <p className="text-sm text-muted-foreground font-medium mt-0.5">
-                          {job.company}
-                        </p>
-                      </div>
-                      <Badge variant="outline" className={`${statusColors[job.status]} font-mono text-[10px] rounded-sm uppercase px-2 py-0.5 tracking-wider border`}>
-                        {statusLabels[job.status]}
-                      </Badge>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] font-mono text-muted-foreground uppercase">
-                      <span>ADDED: {formatDate(job.createdAt)}</span>
-                      {job.updatedAt !== job.createdAt && (
-                        <>
-                          <span>•</span>
-                          <span>UPDATED: {formatDate(job.updatedAt)}</span>
-                        </>
-                      )}
-                      {job.notes.length > 0 && (
-                        <>
-                          <span>•</span>
-                          <span className="text-foreground/70 font-bold">[{job.notes.length} NOTE{job.notes.length > 1 ? 'S' : ''}]</span>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex flex-wrap items-center gap-3 w-full">
-                  <Select
-                    value={job.status}
-                    onValueChange={(val) => updateStatus(job.id, val as string)}
-                  >
-                    <SelectTrigger className="w-36 font-mono text-xs rounded-sm border-border bg-background/30 hover:bg-foreground/[0.02]">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent className="font-mono text-xs rounded-sm">
-                      <SelectItem value="APPLIED">APPLIED</SelectItem>
-                      <SelectItem value="INTERVIEWING">INTERVIEWING</SelectItem>
-                      <SelectItem value="OFFERED">OFFERED</SelectItem>
-                      <SelectItem value="REJECTED">REJECTED</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  
-                  {job.url && (
-                    <a
-                      href={job.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-xs font-mono text-blue-500 hover:text-blue-600 hover:underline flex items-center gap-1 decoration-blue-500/30"
-                    >
-                      VIEW_POSTING ↗
-                    </a>
-                  )}
-                  
-                  <div className="ml-auto flex items-center gap-2">
-                    <Dialog>
-                      <DialogTrigger render={
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="font-mono text-xs rounded-sm border-border hover:bg-foreground/[0.02] cursor-pointer"
-                          onClick={() => setSelectedJob(job)}
-                        >
-                          LOGS ({job.notes.length})
-                        </Button>
-                      } />
-                      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto border border-border bg-card rounded-sm shadow-none font-sans">
-                        <DialogHeader className="border-b border-border/80 pb-3">
-                          <DialogTitle className="font-mono text-sm font-bold uppercase tracking-wider flex items-center justify-between">
-                            <span>Application Notes</span>
-                            <span className="text-muted-foreground text-[10px] font-medium tracking-normal">[DB // READ_NOTES]</span>
-                          </DialogTitle>
-                        </DialogHeader>
-                        <div className="space-y-5 pt-4">
-                          {/* Add Note Form */}
-                          <div className="space-y-2">
-                            <Label className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Add a new log entry</Label>
-                            <Textarea
-                              value={noteText}
-                              onChange={(e) => setNoteText(e.target.value)}
-                              placeholder="Record interview status, recruiter communications, or code test feedback..."
-                              rows={3}
-                              className="rounded-sm border border-input bg-background/50 focus-visible:border-foreground/30 focus-visible:ring-3 focus-visible:ring-foreground/10 p-2 text-sm placeholder:text-muted-foreground/40"
-                            />
-                            <Button
-                              onClick={() => addNote(job.id)}
-                              disabled={addingNote || !noteText.trim()}
-                              size="sm"
-                              className="font-mono text-xs rounded-sm border border-foreground bg-foreground text-background hover:bg-background hover:text-foreground transition-all cursor-pointer"
-                            >
-                              {addingNote ? "APPENDING..." : "APPEND_LOG_ENTRY"}
-                            </Button>
-                          </div>
-
-                          {/* Notes List */}
-                          <div className="space-y-3 pt-2">
-                            <h4 className="font-mono text-xs uppercase tracking-wider text-muted-foreground font-bold">
-                              Log Stream ({selectedJob?.id === job.id ? selectedJob.notes.length : job.notes.length})
-                            </h4>
-                            {(selectedJob?.id === job.id ? selectedJob.notes : job.notes).length === 0 ? (
-                              <div className="text-center py-8 font-mono text-xs text-muted-foreground border border-dashed border-border rounded-sm bg-background/10">
-                                [STREAM_EMPTY: NO NOTES REGISTERED]
-                              </div>
-                            ) : (
-                              <div className="space-y-3 max-h-[40vh] overflow-y-auto pr-1">
-                                {(selectedJob?.id === job.id ? selectedJob.notes : job.notes).map((note) => (
-                                  <Card key={note.id} size="sm" className="border border-border bg-background/30 rounded-sm shadow-none">
-                                    <CardContent className="p-3">
-                                      <div className="flex justify-between items-start gap-3">
-                                        <div className="flex-1">
-                                          <p className="text-sm whitespace-pre-wrap text-foreground/90 font-sans leading-relaxed">{note.text}</p>
-                                          <p className="text-[10px] font-mono text-muted-foreground mt-2 uppercase">
-                                            TIMESTAMP: {formatDate(note.createdAt)}
-                                          </p>
-                                        </div>
-                                        <Button
-                                          variant="ghost"
-                                          size="xs"
-                                          className="font-mono text-[10px] text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 cursor-pointer rounded-sm"
-                                          onClick={() => deleteNote(note.id)}
-                                        >
-                                          [DELETE]
-                                        </Button>
-                                      </div>
-                                    </CardContent>
-                                  </Card>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </DialogContent>
-                    </Dialog>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="font-mono text-xs rounded-sm text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 cursor-pointer"
-                      onClick={() => {
-                        if (confirm("Delete this application?")) {
-                          deleteJob(job.id);
-                        }
-                      }}
-                    >
-                      [DELETE]
+        {fetching ? (
+          <div className="space-y-4">
+            <JobSkeleton />
+            <JobSkeleton />
+            <JobSkeleton />
+          </div>
+        ) : (
+          <>
+            <div className="space-y-4">
+              {filteredJobs.length === 0 && jobs.length === 0 && (
+                <Card className="border-dashed border border-border bg-card/10 rounded-sm shadow-none">
+                  <CardContent className="flex flex-col items-center justify-center py-16 text-center">
+                    <div className="font-mono text-3xl mb-4 text-muted-foreground/60">[NO_RECORDS]</div>
+                    <h3 className="text-base font-mono font-bold mb-2">DATABASE IS EMPTY</h3>
+                    <p className="text-sm text-muted-foreground mb-6 max-w-sm">
+                      No active applications found. Initialize tracking by creating your first entry.
+                    </p>
+                    <Button onClick={() => setOpen(true)} className="font-mono rounded-sm text-xs border border-foreground bg-foreground text-background hover:bg-background hover:text-foreground cursor-pointer">
+                      CREATE_FIRST_RECORD
                     </Button>
-                  </div>
+                  </CardContent>
+                </Card>
+              )}
+              {filteredJobs.length === 0 && jobs.length > 0 && (
+                <Card className="border-dashed border border-border bg-card/10 rounded-sm shadow-none">
+                  <CardContent className="flex flex-col items-center justify-center py-12 text-center">
+                    <div className="font-mono text-2xl mb-2 text-muted-foreground/60">[NO_MATCHES]</div>
+                    <p className="text-sm font-mono text-muted-foreground">
+                      Query returned 0 results. Refine search criteria.
+                    </p>
+                  </CardContent>
+                </Card>
+              )}
+              {paginatedJobs.map((job) => (
+                <Card key={job.id} className="border border-border hover:border-foreground/30 hover:bg-foreground/[0.01] transition-all rounded-sm shadow-none">
+                  <CardHeader className="pb-3">
+                    <div className="flex flex-col md:flex-row md:justify-between md:items-start gap-3">
+                      <div className="flex-1">
+                        <div className="flex items-start justify-between gap-3 mb-2.5">
+                          <div className="flex-1">
+                            <CardTitle className="text-lg font-bold tracking-tight text-foreground">{job.title}</CardTitle>
+                            <p className="text-sm text-muted-foreground font-medium mt-0.5">
+                              {job.company}
+                            </p>
+                          </div>
+                          <Badge variant="outline" className={`${statusColors[job.status]} font-mono text-[10px] rounded-sm uppercase px-2 py-0.5 tracking-wider border`}>
+                            {statusLabels[job.status]}
+                          </Badge>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] font-mono text-muted-foreground uppercase">
+                          <span>ADDED: {formatDate(job.createdAt)}</span>
+                          {job.updatedAt !== job.createdAt && (
+                            <>
+                              <span>•</span>
+                              <span>UPDATED: {formatDate(job.updatedAt)}</span>
+                            </>
+                          )}
+                          {job.notes.length > 0 && (
+                            <>
+                              <span>•</span>
+                              <span className="text-foreground/70 font-bold">[{job.notes.length} NOTE{job.notes.length > 1 ? 'S' : ''}]</span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="flex flex-wrap items-center gap-3 w-full">
+                      <Select
+                        value={job.status}
+                        onValueChange={(val) => updateStatus(job.id, val as string)}
+                      >
+                        <SelectTrigger className="w-36 font-mono text-xs rounded-sm border-border bg-background/30 hover:bg-foreground/[0.02]">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent className="font-mono text-xs rounded-sm">
+                          <SelectItem value="APPLIED">APPLIED</SelectItem>
+                          <SelectItem value="INTERVIEWING">INTERVIEWING</SelectItem>
+                          <SelectItem value="OFFERED">OFFERED</SelectItem>
+                          <SelectItem value="REJECTED">REJECTED</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      
+                      {job.url && (
+                        <a
+                          href={job.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs font-mono text-blue-500 hover:text-blue-600 hover:underline flex items-center gap-1 decoration-blue-500/30"
+                        >
+                          VIEW_POSTING ↗
+                        </a>
+                      )}
+                      
+                      <div className="ml-auto flex items-center gap-2">
+                        <Dialog>
+                          <DialogTrigger render={
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="font-mono text-xs rounded-sm border-border hover:bg-foreground/[0.02] cursor-pointer"
+                              onClick={() => setSelectedJob(job)}
+                            >
+                              LOGS ({job.notes.length})
+                            </Button>
+                          } />
+                          <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto border border-border bg-card rounded-sm shadow-none font-sans">
+                            <DialogHeader className="border-b border-border/80 pb-3">
+                              <DialogTitle className="font-mono text-sm font-bold uppercase tracking-wider flex items-center justify-between">
+                                <span>Application Notes</span>
+                                <span className="text-muted-foreground text-[10px] font-medium tracking-normal">[DB // READ_NOTES]</span>
+                              </DialogTitle>
+                            </DialogHeader>
+                            <div className="space-y-5 pt-4">
+                              {/* Add Note Form */}
+                              <div className="space-y-2">
+                                <Label className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Add a new log entry</Label>
+                                <Textarea
+                                  value={noteText}
+                                  onChange={(e) => setNoteText(e.target.value)}
+                                  placeholder="Record interview status, recruiter communications, or code test feedback..."
+                                  rows={3}
+                                  className="rounded-sm border border-input bg-background/50 focus-visible:border-foreground/30 focus-visible:ring-3 focus-visible:ring-foreground/10 p-2 text-sm placeholder:text-muted-foreground/40"
+                                />
+                                <Button
+                                  onClick={() => addNote(job.id)}
+                                  disabled={addingNote || !noteText.trim()}
+                                  size="sm"
+                                  className="font-mono text-xs rounded-sm border border-foreground bg-foreground text-background hover:bg-background hover:text-foreground transition-all cursor-pointer"
+                                >
+                                  {addingNote ? "APPENDING..." : "APPEND_LOG_ENTRY"}
+                                </Button>
+                              </div>
+
+                              {/* Notes List */}
+                              <div className="space-y-3 pt-2">
+                                <h4 className="font-mono text-xs uppercase tracking-wider text-muted-foreground font-bold">
+                                  Log Stream ({selectedJob?.id === job.id ? selectedJob.notes.length : job.notes.length})
+                                </h4>
+                                {(selectedJob?.id === job.id ? selectedJob.notes : job.notes).length === 0 ? (
+                                  <div className="text-center py-8 font-mono text-xs text-muted-foreground border border-dashed border-border rounded-sm bg-background/10">
+                                    [STREAM_EMPTY: NO NOTES REGISTERED]
+                                  </div>
+                                ) : (
+                                  <div className="space-y-3 max-h-[40vh] overflow-y-auto pr-1">
+                                    {(selectedJob?.id === job.id ? selectedJob.notes : job.notes).map((note) => (
+                                      <Card key={note.id} size="sm" className="border border-border bg-background/30 rounded-sm shadow-none">
+                                        <CardContent className="p-3">
+                                          <div className="flex justify-between items-start gap-3">
+                                            <div className="flex-1">
+                                              <p className="text-sm whitespace-pre-wrap text-foreground/90 font-sans leading-relaxed">{note.text}</p>
+                                              <p className="text-[10px] font-mono text-muted-foreground mt-2 uppercase">
+                                                TIMESTAMP: {formatDate(note.createdAt)}
+                                              </p>
+                                            </div>
+                                            <Button
+                                              variant="ghost"
+                                              size="xs"
+                                              className="font-mono text-[10px] text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 cursor-pointer rounded-sm"
+                                              onClick={() => deleteNote(note.id)}
+                                            >
+                                              [DELETE]
+                                            </Button>
+                                          </div>
+                                        </CardContent>
+                                      </Card>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </DialogContent>
+                        </Dialog>
+                        <Dialog>
+                          <DialogTrigger render={
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="font-mono text-xs rounded-sm text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 cursor-pointer"
+                            >
+                              [DELETE]
+                            </Button>
+                          } />
+                          <DialogContent className="border border-border bg-card rounded-sm shadow-none max-w-sm font-sans">
+                            <DialogHeader className="border-b border-border/80 pb-3">
+                              <DialogTitle className="font-mono text-sm font-bold uppercase tracking-wider flex items-center justify-between text-rose-500">
+                                <span>Confirm Deletion</span>
+                                <span className="text-muted-foreground text-[10px] font-medium tracking-normal">[DB // DESTROY_RECORD]</span>
+                              </DialogTitle>
+                            </DialogHeader>
+                            <div className="space-y-4 pt-4 font-mono text-xs text-muted-foreground leading-relaxed">
+                              <p>
+                                Are you sure you want to permanently delete the job application for <span className="text-foreground font-semibold">{job.title}</span> at <span className="text-foreground font-semibold">{job.company}</span>?
+                              </p>
+                              <p className="text-rose-500/80 font-bold bg-rose-500/5 border border-rose-500/10 p-2 rounded-sm">
+                                [WARNING // THIS_ACTION_IS_PERMANENT]
+                              </p>
+                              <div className="flex justify-end gap-3 pt-2">
+                                <DialogClose render={
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="font-mono text-xs rounded-sm border-border hover:bg-foreground/[0.02] cursor-pointer"
+                                  >
+                                    [CANCEL]
+                                  </Button>
+                                } />
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="font-mono text-xs rounded-sm text-white bg-rose-600 border border-rose-600 hover:bg-rose-700 cursor-pointer"
+                                  onClick={() => deleteJob(job.id)}
+                                >
+                                  [CONFIRM_DELETE]
+                                </Button>
+                              </div>
+                            </div>
+                          </DialogContent>
+                        </Dialog>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+
+            {/* Pagination Controls */}
+            {filteredJobs.length > 0 && (
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-6 border-t border-border mt-8 font-mono text-xs text-muted-foreground">
+                <div>
+                  SHOWING_RECORDS {(activePage - 1) * itemsPerPage + 1}-
+                  {Math.min(activePage * itemsPerPage, filteredJobs.length)} OF {filteredJobs.length}
                 </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+                <div className="flex items-center gap-4">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="font-mono text-xs rounded-sm border-border hover:bg-foreground/[0.02] cursor-pointer"
+                    disabled={activePage === 1}
+                    onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+                  >
+                    [PREV_PAGE]
+                  </Button>
+                  <span className="select-none text-foreground font-semibold">
+                    PAGE {String(activePage).padStart(2, "0")} OF {String(totalPages).padStart(2, "0")}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="font-mono text-xs rounded-sm border-border hover:bg-foreground/[0.02] cursor-pointer"
+                    disabled={activePage === totalPages}
+                    onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
+                  >
+                    [NEXT_PAGE]
+                  </Button>
+                </div>
+              </div>
+            )}
+          </>
+        )}
       </div>
     </div>
   );
